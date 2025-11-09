@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# UV (Virtual Environment)
+.venv/
+
+# VSCode
+.vscode/
+
+# 操作系统
+*.DS_Store
+Thumbs.db
