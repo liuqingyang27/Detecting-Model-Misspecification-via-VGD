@@ -8,7 +8,6 @@ from collections import namedtuple
 from KGD import KGD
 import matplotlib.pyplot as plt
 from calculate_mmd import calculate_mmd_squared
-from set_parameters import get_sigma, get_model, get_likelihood, get_prior
 
 
 class VGD:
@@ -71,7 +70,7 @@ class VGD:
         particles_VGD = particles + step_size * phi
         # phi_VGD = phi
         
-        return particles_VGD, KGD(phi, kernel).square_kgd(particles, S_PQ=total_scores)
+        return particles_VGD, KGD(kernel).square_kgd(particles, S_PQ=total_scores)
     
     @staticmethod
     @partial(jit, static_argnames=('prior_score', 'likelihood_score', 'kernel'))
@@ -96,7 +95,7 @@ class VGD:
         term2_SVGD = kernel_matrix @ total_scores_SVGD
         phi_SVGD = (term1 + term2_SVGD)/n
         particles_SVGD = particles + step_size * phi_SVGD
-        return particles_SVGD
+        return particles_SVGD, KGD(kernel).square_kgd(particles, S_PQ=total_scores_SVGD)
     
     def run(self, initial_particles, num_iterations, step_size, lengthscale=1):
         """
@@ -120,43 +119,34 @@ class VGD:
         self.history = [initial_particles.copy()]
         self.history_SVGD = [initial_particles.copy()]
         self.KGD_history = []
+        self.KSD_history = []
 
         for _ in trange(num_iterations):
             self.particles, current_KGD = jit_update(self.particles, step_size, lengthscale)
-            self.particles_SVGD = jit_SVGD_update(self.particles_SVGD, step_size, lengthscale)
+            self.particles_SVGD, current_KSD = jit_SVGD_update(self.particles_SVGD, step_size, lengthscale)
             self.history.append(self.particles.copy())
             self.history_SVGD.append(self.particles_SVGD.copy())
             self.KGD_history.append(current_KGD)
+            self.KSD_history.append(current_KSD)
 
         self.particles = jnp.array(self.particles)
         self.history = jnp.array(self.history)
         self.particles_SVGD = jnp.array(self.particles_SVGD)
         self.history_SVGD = jnp.array(self.history_SVGD)
         self.KGD_history = jnp.array(self.KGD_history)
+        self.KSD_history = jnp.array(self.KSD_history)
 
-        return self.particles, self.history, self.particles_SVGD, self.history_SVGD, self.KGD_history
+        return self.particles, self.history, self.particles_SVGD, self.history_SVGD, self.KGD_history, self.KSD_history
 
 
-    def plot_KGD(self):
-        plt.plot(range(len(self.KGD_history)), jnp.log(self.KGD_history))
-        plt.xlabel('Iteration number')
-        plt.ylabel('Log KGD')
-        plt.title('Log KGD over Iterations')
-        plt.show()
+    # def lengthscale(self):
+    #     all_particles = jnp.concatenate([self.particles, self.particles_SVGD], axis=0)
+    #     vmapped_model = jax.vmap(self.model, in_axes=(0, None))
+    #     all_results = vmapped_model(all_particles, self.x)
+    #     self.mmd_length_scale = jnp.std(all_results)
+    #     return self.mmd_length_scale
 
-    def set_model(self, prefix):
-        self.model = get_model(prefix)
-        self.sigma = get_sigma(prefix)
-        self.x, self.y = self.data
-
-    def lengthscale(self):
-        all_particles = jnp.concatenate([self.particles, self.particles_SVGD], axis=0)
-        vmapped_model = jax.vmap(self.model, in_axes=(0, None))
-        all_results = vmapped_model(all_particles, self.x)
-        self.mmd_length_scale = jnp.std(all_results)
-        return self.mmd_length_scale
-
-    def mmd_squared(self, p=1, lengthscale=None):
-        if lengthscale is None:
-            lengthscale = self.lengthscale()
-        return calculate_mmd_squared(self.particles_SVGD, self.particles, self.x, self.model, lengthscale, self.sigma, p)
+    # def mmd_squared(self, p=1, lengthscale=None):
+    #     if lengthscale is None:
+    #         lengthscale = self.lengthscale()
+    #     return calculate_mmd_squared(self.particles_SVGD, self.particles, self.x, self.model, lengthscale, self.sigma, p)

@@ -19,13 +19,6 @@ class model:
         log_probs = jax.scipy.stats.norm.logpdf(y, loc=predicted_y, scale=self.sigma)
         return log_probs.sum()
     
-    # def generate_particles(self, n_particles=20):
-    #     self.key, subkey = random.split(self.key)
-    #     self.initial_particles = random.normal(subkey, shape=(n_particles, self.dim))
-
-    # def get_initial_particles(self):
-    #     return self.initial_particles
-
     def generate_x(self, n_data, x_min=-1.0, x_max=1.0):
         self.key, subkey = random.split(self.key)
         self.x = random.uniform(subkey, (n_data,), minval=x_min, maxval=x_max)

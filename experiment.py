@@ -1,0 +1,164 @@
+import jax
+import jax.numpy as jnp
+from jax import grad, vmap, jit
+import jax.random as random
+from functools import partial
+
+import matplotlib.pyplot as plt
+
+
+from model import model
+from methods import VGD
+from calculate_mmd import calculate_mmd_squared
+
+class experiment:
+    def __init__(self, model, data, n_particles=20, kernel=None, key=random.PRNGKey(49)):
+        self.model = model
+        self.fn = model.fn
+        self.sigma = model.sigma
+        self.log_prior = model.log_prior
+        self.log_likelihood = model.log_likelihood
+        self.dim = model.dim
+
+        self.data = data
+        self.key = key
+        self.n_particles = n_particles
+        self.kernel = kernel
+        
+
+        self.initialise_particles()
+        self.algorithm = VGD(self.log_prior, self.log_likelihood, self.data, kernel=kernel)
+
+    def initialise_particles(self):
+        self.key, subkey = random.split(self.key)
+        self.initial_particles = random.normal(subkey, shape=(self.n_particles, self.dim))
+    
+    def run(self, n_steps=1000, step_size=0.01, lengthscale=1.0):
+        self.n_steps = n_steps
+        self.step_size = step_size
+        self.lengthscale = lengthscale
+        self.particles_VGD, self.history_VGD, self.particles_SVGD, self.history_SVGD, self.history_KGD, self.history_KSD = self.algorithm.run(self.initial_particles, num_iterations=self.n_steps, step_size=self.step_size, lengthscale=self.lengthscale)
+
+    def plot_KGD(self):
+        plt.plot(range(len(self.history_KGD)), jnp.log(self.history_KGD))
+        plt.xlabel('Iteration number')
+        plt.ylabel('Log KGD')
+        plt.title('Log KGD over Iterations')
+        plt.show()
+
+    def plot_KSD(self):
+        plt.plot(range(len(self.history_KSD)), jnp.log(self.history_KSD))
+        plt.xlabel('Iteration number')
+        plt.ylabel('Log KSD')
+        plt.title('Log KSD over Iterations')
+        plt.show()
+
+class diagnostic_experiment(experiment):
+    def __init__(self, experiment, key=random.PRNGKey(49)):
+        super().__init__(experiment.model, experiment.data, experiment.n_particles, experiment.kernel, key=key)
+        self.x, self.y = self.data
+        self.particles_VGD, self.history_VGD, self.particles_SVGD, self.history_SVGD, self.history_KGD, self.history_KSD = experiment.particles_VGD, experiment.history_VGD, experiment.particles_SVGD, experiment.history_SVGD, experiment.history_KGD, experiment.history_KSD
+        self.n_steps = experiment.n_steps
+        self.step_size = experiment.step_size
+        self.lengthscale = experiment.lengthscale
+
+    def sample_particles(self, particles, n, repeat=True, key=random.PRNGKey(0)):
+        if repeat:
+            mean = jnp.mean(particles, axis=0)
+            return jnp.tile(mean, (n, 1))
+        num_particles = particles.shape[0]
+        indices = random.choice(key, num_particles, shape=(n,), replace=False)
+        return particles[indices]
+    
+    @staticmethod
+    @partial(jit, static_argnums=(2,))
+    def generate_data_batch(particles, x, fn, sigma, key): 
+        particles_jnp = jnp.asarray(particles)    
+        particles_arr = jnp.atleast_1d(particles_jnp)
+        y = vmap(fn, in_axes=(0, None))(particles_arr, x)
+        noise = sigma * jax.random.normal(key, shape=y.shape)
+        return y + noise
+
+    def run_single_experiment(self, data_y, 
+                                initial_particles_single):
+
+        data_for_vgd = (self.x, data_y)
+
+        algorithm = VGD(self.log_prior, self.log_likelihood, data_for_vgd, kernel=self.kernel)
+        
+        particles_VGD, history_VGD, particles_SVGD, history_SVGD, history_KGD, history_KSD = \
+            algorithm.run(initial_particles_single, num_iterations=self.n_steps, 
+                        step_size=self.step_size, lengthscale=self.lengthscale)
+    
+        return particles_VGD, history_VGD, particles_SVGD, history_SVGD, history_KGD, history_KSD
+    
+    def resample_experiment(
+            self,
+            num_sample_from_posterior):
+        
+        self.key, _ = random.split(self.key)
+        initial_particles = random.normal(self.key, (self.n_particles, self.particles_SVGD.shape[1]))
+
+        subkey1, subkey2 = random.split(self.key)
+        new_particles = self.sample_particles(self.particles_SVGD, num_sample_from_posterior, key=subkey1)
+
+        dataset = self.generate_data_batch(new_particles, self.x, self.fn, self.sigma, key=subkey2)
+        print(dataset[0:2,0:2])
+        
+        # print(f"Generated dataset for {prefix} model with shape: {dataset.shape}")
+        
+        vmapped_runner = vmap(
+            self.run_single_experiment, 
+            in_axes=(0, None)
+        )
+
+        self.all_particles_VGD, self.all_history_VGD, self.all_particles_SVGD, self.all_history_SVGD, self.all_history_KGD, self.all_history_KSD = vmapped_runner(
+            dataset, 
+            initial_particles
+        )
+
+    def plot_diagnostic(self, num_sample_from_posterior = 100):
+        self.resample_experiment(num_sample_from_posterior)
+        vmapped_mmd = vmap(calculate_mmd_squared, 
+                        in_axes=(0,
+                                0,             
+                                None,  
+                                None,  
+                                None,         
+                                None,  
+                                None))
+        mmd_fn = self.fn
+        mmd_sigma = self.sigma
+
+        all_particles = jnp.concatenate([self.particles_VGD, self.particles_SVGD], axis=0)
+        vmapped_model = jax.vmap(mmd_fn, in_axes=(0, None))
+        all_results = vmapped_model(all_particles)
+        mmd_length_scale = jnp.std(all_results)
+        # mmd_length_scale = jnp.ptp(all_results)
+        print("MMD length scale:", mmd_length_scale)
+
+        mmd_p = 1
+
+        all_mmd_values = vmapped_mmd(
+            self.all_particles_SVGD,  
+            self.all_particles_VGD,
+            mmd_fn,           
+            mmd_length_scale,    
+            mmd_sigma,           
+            mmd_p                
+        )
+
+        all_mmd_values.block_until_ready()
+        actual_mmd = calculate_mmd_squared(self.particles_SVGD, self.particles_VGD, mmd_fn, mmd_length_scale, mmd_sigma, p=mmd_p)
+        print("Actual mmd", actual_mmd)
+        # plt.hist(all_mmd_values)
+        # sns.kdeplot(all_mmd_values, fill=True, label='MMD (KDE)', clip=(0, None))
+        plt.hist(all_mmd_values, bins=30, density=True, alpha=0.6, color='g')
+        plt.axvline(
+            x=actual_mmd, 
+            color='red', 
+            linestyle='--', 
+            linewidth=2, 
+            label=f'Actual MMD: {actual_mmd:.4f}'
+        )
+        return all_mmd_values, actual_mmd        
