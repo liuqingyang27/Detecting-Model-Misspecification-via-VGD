@@ -29,6 +29,14 @@ class experiment:
         self.initialise_particles()
         self.algorithm = VGD(self.log_prior, self.log_likelihood, self.data, kernel=kernel)
 
+        # Compute MMD length scale and actual MMD
+        all_particles = jnp.concatenate([self.particles_VGD, self.particles_SVGD], axis=0)
+        vmapped_model = jax.vmap(self.fn, in_axes=(0, None))
+        all_results = vmapped_model(all_particles, self.x)
+        self.mmd_length_scale = jnp.std(all_results)
+        # self.mmd_length_scale = jnp.ptp(all_results)
+        self.actual_mmd = calculate_mmd_squared(self.particles_SVGD, self.particles_VGD, self.x, self.fn, self.mmd_length_scale, self.sigma, p=1)
+
     def initialise_particles(self):
         self.key, subkey = random.split(self.key)
         self.initial_particles = random.normal(subkey, shape=(self.n_particles, self.dim))
@@ -62,15 +70,8 @@ class diagnostic_experiment(experiment):
         self.step_size = experiment.step_size
         self.lengthscale = experiment.lengthscale
 
-
-        # Compute MMD length scale and actual MMD
-        all_particles = jnp.concatenate([self.particles_VGD, self.particles_SVGD], axis=0)
-        vmapped_model = jax.vmap(self.fn, in_axes=(0, None))
-        all_results = vmapped_model(all_particles, self.x)
-        self.mmd_length_scale = jnp.std(all_results)
-        # self.mmd_length_scale = jnp.ptp(all_results)
-
-        self.actual_mmd = calculate_mmd_squared(self.particles_SVGD, self.particles_VGD, self.x, self.fn, self.mmd_length_scale, self.sigma, p=1)
+        self.mmd_length_scale = experiment.mmd_length_scale
+        self.actual_mmd = experiment.actual_mmd
 
 
     def sample_particles(self, particles, n, repeat=True, key=random.PRNGKey(0)):
