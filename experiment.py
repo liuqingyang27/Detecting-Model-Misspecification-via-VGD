@@ -62,7 +62,19 @@ class diagnostic_experiment(experiment):
         self.step_size = experiment.step_size
         self.lengthscale = experiment.lengthscale
 
+
+        # Compute MMD length scale and actual MMD
+        all_particles = jnp.concatenate([self.particles_VGD, self.particles_SVGD], axis=0)
+        vmapped_model = jax.vmap(self.fn, in_axes=(0, None))
+        all_results = vmapped_model(all_particles, self.x)
+        self.mmd_length_scale = jnp.std(all_results)
+        # self.mmd_length_scale = jnp.ptp(all_results)
+
+        self.actual_mmd = calculate_mmd_squared(self.particles_SVGD, self.particles_VGD, self.x, self.fn, self.mmd_length_scale, self.sigma, p=1)
+
+
     def sample_particles(self, particles, n, repeat=True, key=random.PRNGKey(0)):
+        ## Sample n particles from Q_Bayes. We actually return a vector of posterior means, but sampling is also possible.
         if repeat:
             mean = jnp.mean(particles, axis=0)
             return jnp.tile(mean, (n, 1))
@@ -73,6 +85,7 @@ class diagnostic_experiment(experiment):
     @staticmethod
     @partial(jit, static_argnums=(2,))
     def generate_data_batch(particles, x, fn, sigma, key): 
+        ## Generate datasets for each theta in particles. {y_i,j} ~ p(y|x_j, theta_i)
         particles_jnp = jnp.asarray(particles)    
         particles_arr = jnp.atleast_1d(particles_jnp)
         y = vmap(fn, in_axes=(0, None))(particles_arr, x)
@@ -81,7 +94,7 @@ class diagnostic_experiment(experiment):
 
     def run_single_experiment(self, data_y, 
                                 initial_particles_single):
-
+        ## VGD and SVGD functions for vmap
         data_for_vgd = (self.x, data_y)
 
         algorithm = VGD(self.log_prior, self.log_likelihood, data_for_vgd, kernel=self.kernel)
@@ -95,7 +108,7 @@ class diagnostic_experiment(experiment):
     def resample_experiment(
             self,
             num_sample_from_posterior):
-        
+        ## Resample theta and run corresponding experiments
         self.key, _ = random.split(self.key)
         initial_particles = random.normal(self.key, (self.n_particles, self.particles_SVGD.shape[1]))
 
@@ -103,10 +116,7 @@ class diagnostic_experiment(experiment):
         new_particles = self.sample_particles(self.particles_SVGD, num_sample_from_posterior, key=subkey1)
 
         dataset = self.generate_data_batch(new_particles, self.x, self.fn, self.sigma, key=subkey2)
-        print(dataset[0:2,0:2])
-        
-        # print(f"Generated dataset for {prefix} model with shape: {dataset.shape}")
-        
+                
         vmapped_runner = vmap(
             self.run_single_experiment, 
             in_axes=(0, None)
@@ -118,7 +128,10 @@ class diagnostic_experiment(experiment):
         )
 
     def plot_diagnostic(self, num_sample_from_posterior = 100):
+        # Run all experiments
         self.resample_experiment(num_sample_from_posterior)
+        
+        # Compute MMD values for each experiment
         vmapped_mmd = vmap(calculate_mmd_squared, 
                         in_axes=(0,
                                 0,             
@@ -127,38 +140,32 @@ class diagnostic_experiment(experiment):
                                 None,         
                                 None,  
                                 None))
-        mmd_fn = self.fn
-        mmd_sigma = self.sigma
-
-        all_particles = jnp.concatenate([self.particles_VGD, self.particles_SVGD], axis=0)
-        vmapped_model = jax.vmap(mmd_fn, in_axes=(0, None))
-        all_results = vmapped_model(all_particles)
-        mmd_length_scale = jnp.std(all_results)
-        # mmd_length_scale = jnp.ptp(all_results)
-        print("MMD length scale:", mmd_length_scale)
+        
+        print("MMD length scale:", self.mmd_length_scale)
 
         mmd_p = 1
 
-        all_mmd_values = vmapped_mmd(
+        self.all_mmd_values = vmapped_mmd(
             self.all_particles_SVGD,  
             self.all_particles_VGD,
-            mmd_fn,           
-            mmd_length_scale,    
-            mmd_sigma,           
+            self.x,
+            self.fn,           
+            self.mmd_length_scale,    
+            self.sigma,           
             mmd_p                
         )
 
-        all_mmd_values.block_until_ready()
-        actual_mmd = calculate_mmd_squared(self.particles_SVGD, self.particles_VGD, mmd_fn, mmd_length_scale, mmd_sigma, p=mmd_p)
-        print("Actual mmd", actual_mmd)
+        self.all_mmd_values.block_until_ready()
+        
+        print("Actual mmd", self.actual_mmd)
         # plt.hist(all_mmd_values)
         # sns.kdeplot(all_mmd_values, fill=True, label='MMD (KDE)', clip=(0, None))
-        plt.hist(all_mmd_values, bins=30, density=True, alpha=0.6, color='g')
+        plt.hist(self.all_mmd_values, bins=30, density=True, alpha=0.6, color='g')
         plt.axvline(
-            x=actual_mmd, 
+            x=self.actual_mmd, 
             color='red', 
             linestyle='--', 
             linewidth=2, 
-            label=f'Actual MMD: {actual_mmd:.4f}'
+            label=f'Actual MMD: {self.actual_mmd:.4f}'
         )
-        return all_mmd_values, actual_mmd        
+        return self.all_mmd_values, self.actual_mmd        

@@ -8,7 +8,6 @@ class model:
         ## y=fn(theta, x) + N(0, I_dim*sigma^2)
         self.fn = fn
         self.sigma = sigma
-        self.key = random.PRNGKey(49)
         self.dim = theta_dim
 
     def log_prior(self, theta):
@@ -19,15 +18,18 @@ class model:
         log_probs = jax.scipy.stats.norm.logpdf(y, loc=predicted_y, scale=self.sigma)
         return log_probs.sum()
     
-    def generate_x(self, n_data, x_min=-1.0, x_max=1.0):
-        self.key, subkey = random.split(self.key)
-        self.x = random.uniform(subkey, (n_data,), minval=x_min, maxval=x_max)
+    def generate_x(self, n_data, x_min=-1.0, x_max=1.0, key=random.PRNGKey(0)):
+        x = random.uniform(key, (n_data,), minval=x_min, maxval=x_max)
+        return x
 
-    def generate_data_batch(self, n_data, particles):
-        self.generate_x(n_data)
-        particles_jnp = jnp.asarray(particles) 
-        particles_arr = jnp.atleast_1d(particles_jnp)
-        y = vmap(self.fn, in_axes=(0, None))(particles_arr, self.x)
-        noise = self.sigma * jax.random.normal(self.key, shape=y.shape)
-        return (y + noise)[0]
+    def generate_data(self, n_data, particle, x_min=-1.0, x_max=1.0, key=random.PRNGKey(0)):
+        subkey1, subkey2 = random.split(key)
+        x = self.generate_x(n_data, x_min, x_max, key=subkey1)
+
+        particle_jnp = jnp.asarray(particle)
+        particle_arr = jnp.atleast_1d(particle_jnp)
+        y = self.fn(particle_arr, x)
+        noise = self.sigma * jax.random.normal(subkey2, shape=y.shape)
+        y_noised = y + noise
+        return (x, y_noised)
     
