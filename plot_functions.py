@@ -213,7 +213,7 @@ def plot_diagnostic_manual_broken(
     # fig.text(x_center, y_pos, 'MMD Value', ha='center', va='top')
 
 
-def plot_main_figure(file_name='main_fig.dill', ):
+def plot_main_figure(file_name='main_fig.dill'):
     sns.set_theme(
     style="white",
     rc={
@@ -227,11 +227,11 @@ def plot_main_figure(file_name='main_fig.dill', ):
 
     jax.config.update("jax_enable_x64", True)
     try:
-        with open('main_fig.dill', 'rb') as f:
+        with open(file_name, 'rb') as f:
             data = dill.load(f)
         print(f"成功加载文件，包含 {len(data.keys())} 个数组: {list(data.keys())}")
     except FileNotFoundError:
-        print(r"错误：'main_fig.dill' 文件未找到。")
+        print(fr"错误：'{file_name}' 文件未找到。")
         exit()
 
     # --- 3. 自动化绘图 ---
@@ -287,6 +287,8 @@ def plot_main_figure(file_name='main_fig.dill', ):
 
         plot_shaded_region_predictive(axes[row_idx, 0], experiment_w, experiment_w.particles_SVGD, SVGD_color)
         plot_shaded_region_predictive(axes[row_idx, 1], experiment_w, experiment_w.particles_VGD, VGD_color)
+        axes[row_idx, 1].yaxis.set_ticks_position('none')
+        plt.setp(axes[row_idx, 1].get_yticklabels(), visible=False)
 
         ax = axes[row_idx, 2]
         plot_diagnostic(ax, all_mmd_values=all_mmd_values_w, actual_mmd=actual_mmd_w)
@@ -301,6 +303,8 @@ def plot_main_figure(file_name='main_fig.dill', ):
 
         plot_shaded_region_predictive(axes[row_idx, 3], experiment_m, particles_SVGD_m, SVGD_color)
         plot_shaded_region_predictive(axes[row_idx, 4], experiment_m, particles_VGD_m, VGD_color)
+        axes[row_idx, 4].yaxis.set_ticks_position('none')
+        plt.setp(axes[row_idx, 4].get_yticklabels(), visible=False)
 
         ax_left = axes[row_idx, 5]
         ax_right = axes[row_idx, 6]
@@ -337,7 +341,7 @@ def plot_main_figure(file_name='main_fig.dill', ):
 
     # --- 6. 显示图像 ---
     fig.subplots_adjust(
-        wspace=0.2,   # 水平间距
-        hspace=0.15    # 垂直间距
+        wspace=0.16,   # 水平间距
+        hspace=0.12    # 垂直间距
     )
     plt.show()
