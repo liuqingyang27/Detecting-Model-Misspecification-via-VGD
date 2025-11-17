@@ -21,7 +21,7 @@ from experiment import experiment, diagnostic_experiment
 
 import dill
 
-fontsize_axis = 20
+fontsize_axis = 22
 
 def predictive_posterior_distribution_k(
     thetas, 
@@ -61,7 +61,9 @@ def plot_shaded_region_predictive(ax, experiment: experiment, particles, color, 
     mean_curve = jnp.mean(samples, axis=0)
 
     ax.plot(x, mean_curve, color=color, linewidth=2, zorder=3)
-    ax.tick_params(axis='both', labelsize=16)
+    ax.tick_params(axis='both', labelsize=fontsize_axis)
+
+    ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=3, prune='both'))
 
     intervals.sort(reverse=True)
     
@@ -176,6 +178,8 @@ def plot_diagnostic_manual_broken(
     ax_right.set_xticks([actual_mmd_float]) 
     ax_right.get_xaxis().set_major_formatter(plt.FormatStrFormatter('%.1e'))
     # ax_left.set_xticks(...) # (可选)
+
+    ax_left.xaxis.set_major_locator(ticker.MaxNLocator(nbins=2, prune='both'))
 
     sci_formatter = FormatStrFormatter('%.1e')
     ax_left.xaxis.set_major_formatter(sci_formatter)

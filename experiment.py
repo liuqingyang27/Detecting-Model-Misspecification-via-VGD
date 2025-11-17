@@ -34,7 +34,7 @@ class experiment:
         self.key, subkey = random.split(self.key)
         self.initial_particles = random.normal(subkey, shape=(self.n_particles, self.dim))
     
-    def run(self, n_steps=1000, step_size=0.01, lengthscale=1.0):
+    def run(self, n_steps=1000, step_size=0.01, lengthscale=None):
         self.n_steps = n_steps
         self.step_size = step_size
         self.lengthscale = lengthscale
