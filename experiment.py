@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+from jax import lax
 from jax import grad, vmap, jit
 import jax.random as random
 from functools import partial
@@ -116,7 +117,10 @@ class diagnostic_experiment(experiment):
     
     def resample_experiment(
             self,
-            num_sample_from_posterior):
+            num_sample_from_posterior,
+            parallel=True,
+            trajectory=True
+            ):
         ## Resample theta and run corresponding experiments
         self.key, _ = random.split(self.key)
         initial_particles = random.normal(self.key, (self.n_particles, self.particles_SVGD.shape[1]))
@@ -126,19 +130,33 @@ class diagnostic_experiment(experiment):
 
         dataset = self.generate_data_batch(new_particles, self.x, self.fn, self.sigma, key=subkey2)
                 
-        vmapped_runner = vmap(
-            self.run_single_experiment, 
-            in_axes=(0, None)
-        )
+        if not trajectory:
+            def run_single_wrapper(data_y_element):
+                p_vgd, _, p_svgd, _, _, _ = self.run_single_experiment(data_y_element, initial_particles)
+                return p_vgd, p_svgd
+        else:
+            def run_single_wrapper(data_y_element):
+                return self.run_single_experiment(data_y_element, initial_particles)
 
-        self.all_particles_VGD, self.all_history_VGD, self.all_particles_SVGD, self.all_history_SVGD, self.all_history_KGD, self.all_history_KSD = vmapped_runner(
-            dataset, 
-            initial_particles
-        )
+        if parallel:
+            runner = vmap(run_single_wrapper, in_axes=(0,))
+            results = runner(dataset)
+        else:
+            results = lax.map(run_single_wrapper, dataset)
 
-    def plot_diagnostic(self, num_sample_from_posterior = 100):
+        if not trajectory:
+            self.all_particles_VGD, self.all_particles_SVGD = results
+            self.all_history_VGD = None
+            self.all_history_SVGD = None
+            self.all_history_KGD = None
+            self.all_history_KSD = None
+        else:
+            self.all_particles_VGD, self.all_history_VGD, self.all_particles_SVGD, self.all_history_SVGD, self.all_history_KGD, self.all_history_KSD = results
+
+
+    def plot_diagnostic(self, num_sample_from_posterior = 100, parallel=True, trajectory=True):
         # Run all experiments
-        self.resample_experiment(num_sample_from_posterior)
+        self.resample_experiment(num_sample_from_posterior, parallel=parallel, trajectory=trajectory)
         
         # Compute MMD values for each experiment
         vmapped_mmd = vmap(calculate_mmd_squared, 
