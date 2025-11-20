@@ -22,6 +22,68 @@ from experiment import experiment, diagnostic_experiment
 import dill
 
 fontsize_axis = 22
+VGD_colour = '#ff7f0e'
+SVGD_colour = '#1f77b4'
+def plot_KGD(ax, experiment: experiment):
+    ax.plot(range(len(experiment.history_KGD)), jnp.log(experiment.history_KGD), label='Log KGD', color=VGD_colour)
+    ax.plot(range(len(experiment.history_KSD)), jnp.log(experiment.history_KSD), label='Log KSD', color=SVGD_colour)
+    ax.set(xlabel=None, ylabel=None)
+
+
+def plot_kde_q(ax, experiment: experiment):
+    sns.kdeplot(
+        jnp.array(experiment.particles_SVGD), 
+        fill=False, 
+        label='Q_Bayes', 
+        clip=(0, None), 
+        ax=ax, 
+        color=SVGD_colour, 
+        alpha=0.6
+    )
+    sns.kdeplot(
+        jnp.array(experiment.particles_VGD), 
+        fill=False, 
+        label='Q_PrO', 
+        clip=(0, None), 
+        ax=ax, 
+        color=VGD_colour, 
+        alpha=0.6
+    )
+    ax.set(xlabel=None, ylabel=None)
+    # ax.legend()
+
+def plot_kde_q_2d(ax, experiment: experiment, xlims=[-4,4], ylims=[-4,4]):
+    x = experiment.particles_SVGD[:, 0]
+    y = experiment.particles_SVGD[:, 1]
+    sns.kdeplot(
+        x=x, 
+        y=y, 
+        thresh=0.05, 
+        levels=100, 
+        ax=ax, 
+        color=SVGD_colour,
+        alpha=0.6,
+        fill=False
+    )
+    x = experiment.particles_VGD[:, 0]
+    y = experiment.particles_VGD[:, 1]
+    sns.kdeplot(
+        x=x, 
+        y=y, 
+        thresh=0.05, 
+        levels=100, 
+        ax=ax, 
+        color=VGD_colour,
+        alpha=0.6,
+        fill=False
+    )
+    ax.set_xlim(xlims)
+    ax.set_ylim(ylims)
+    handles = [Line2D([0], [0], color=SVGD_colour, lw=2),
+                   Line2D([0], [0], color=VGD_colour, lw=2)]
+    labels = [r'$Q_{Bayes}$', r'$Q_{PC}$']
+    ax.set(xlabel=None, ylabel=None)
+    # ax.legend()
 
 def predictive_posterior_distribution_k(
     thetas, 
@@ -322,7 +384,7 @@ def plot_main_figure(file_name='main_fig.dill'):
         )
 
     # --- 4. 调整布局 ---
-    plt.tight_layout(rect=[0.05, 0, 1, 0.93])
+    plt.tight_layout(rect=[0.03, 0, 1, 0.94])
 
     # --- 5. 添加全局标题和标签 ---
     col_titles = [r'$P_\mathrm{Bayes}$', r'$P_\mathrm{PrO}$', r'$\mathrm{MMD}$', r'$P_\mathrm{Bayes}$', r'$P_\mathrm{PrO}$', r'$\mathrm{MMD}$']

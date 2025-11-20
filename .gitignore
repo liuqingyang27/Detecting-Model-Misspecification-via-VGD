@@ -13,3 +13,4 @@ __pycache__/
 # 操作系统
 *.DS_Store
 Thumbs.db
+sine_different_dimension_experiments.dill

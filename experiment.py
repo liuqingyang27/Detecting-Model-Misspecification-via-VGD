@@ -65,6 +65,15 @@ class experiment:
         plt.title('Log KSD over Iterations')
         plt.show()
 
+    def plot_both(self):
+        plt.plot(range(len(self.history_KGD)), jnp.log(self.history_KGD), label='Log KGD', color='#ff7f0e')
+        plt.plot(range(len(self.history_KSD)), jnp.log(self.history_KSD), label='Log KSD', color='#1f77b4')
+        plt.xlabel('Iteration number')
+        plt.ylabel('Log Value')
+        plt.title('Log KGD and Log KSD over Iterations')
+        plt.legend()
+        plt.show()
+
 class diagnostic_experiment(experiment):
     def __init__(self, experiment, key=random.PRNGKey(49)):
         super().__init__(experiment.model, experiment.data, experiment.n_particles, experiment.kernel, key=key)
