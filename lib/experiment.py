@@ -8,9 +8,9 @@ from functools import partial
 import matplotlib.pyplot as plt
 
 
-from model import model
-from methods import VGD
-from calculate_mmd import calculate_mmd_squared
+from .model import model
+from .methods import VGD
+from .calculate_mmd import calculate_mmd_squared
 
 class experiment:
     def __init__(self, model, data, n_particles=20, kernel=None, key=random.PRNGKey(49)):
