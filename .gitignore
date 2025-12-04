@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.dill
 
 # UV (Virtual Environment)
 .venv/
@@ -10,7 +11,9 @@ __pycache__/
 # VSCode
 .vscode/
 
-# 操作系统
+# system files
 *.DS_Store
 Thumbs.db
-sine_different_dimension_experiments.dill
+
+env_test.py
+different dimension fig.ipynb
